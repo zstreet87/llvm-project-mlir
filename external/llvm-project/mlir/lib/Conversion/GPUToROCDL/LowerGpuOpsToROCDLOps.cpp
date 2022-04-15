@@ -52,6 +52,8 @@
 #include "../GPUCommon/OpToFuncCallLowering.h"
 #include "../PassDetail.h"
 
+#include "mlir/Dialect/LLVMIR/Transforms/SoftwareBF16.h"
+
 using namespace mlir;
 
 namespace {
@@ -106,6 +108,7 @@ struct LowerGpuOpsToROCDLOpsPass
     // Note that since these patterns touch LLVM ops, they'll need to run after
     // conversion
     populateBF16ToROCDLConversionPatterns(converter, bf16fixupPatterns);
+    //mlir::LLVM::populateBF16(converter, bf16fixupPatterns);
 
     LLVMConversionTarget target(getContext());
     configureGpuToROCDLConversionLegality(target);

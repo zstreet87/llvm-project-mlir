@@ -32,6 +32,8 @@
 #include "mlir/InitAllDialects.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "mlir/Dialect/LLVMIR/Transforms/SoftwareBF16.h"
+
 #include <cstdlib>
 #include <mutex>
 
@@ -106,8 +108,12 @@ static LogicalResult runMLIRPasses(ModuleOp m) {
   pmHost.addPass(createGpuToLLVMConversionPass());
   pmHost.addPass(createAsyncToAsyncRuntimePass());
   pmHost.addPass(createConvertAsyncToLLVMPass());
+
+  pmHost.addPass(LLVM::createSoftwareBF16Pass());
+
   mlir::LowerToLLVMOptions lower_to_llvm_opts(m.getContext());
   pmHost.addPass(mlir::createConvertFuncToLLVMPass(lower_to_llvm_opts));
+
 
   return pmHost.run(m);
 }

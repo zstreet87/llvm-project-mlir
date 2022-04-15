@@ -1416,8 +1416,8 @@ createVerifierFunc(ModuleOp &module, const KernelIF &kernel,
       apVal.convert(llvm::APFloat::BFloat(), APFloat::rmNearestTiesToEven,
                     &ignored);
       // HACK for bf16 since BF16 isn't supported by x86 isel
-      llvm::APFloat floatVal(apVal.convertToFloat());
-      return b.create<arith::ConstantFloatOp>(loc, floatVal, floatType);
+      //llvm::APFloat floatVal(apVal.convertToFloat());
+      //return b.create<arith::ConstantFloatOp>(loc, floatVal, floatType);
     }
     return b.create<arith::ConstantFloatOp>(loc, apVal, elemFType);
   };
@@ -1488,9 +1488,11 @@ createVerifierFunc(ModuleOp &module, const KernelIF &kernel,
     cpuLoadVal = loopB.create<arith::TruncFOp>(loc, elemFType, cpuLoadVal);
     gpuPrintVal = loopB.create<arith::ExtFOp>(loc, floatType, gpuLoadVal);
   } else if (elemType.isBF16()) {
-    cpuLoadVal = convertFloatToBF16ToFloat(loopB, cpuLoadVal);
-    gpuLoadVal = convertBF16ToFloat(loopB, gpuLoadVal);
-    gpuPrintVal = gpuLoadVal;
+    cpuLoadVal = loopB.create<arith::TruncFOp>(loc, elemFType, cpuLoadVal);
+    gpuPrintVal = loopB.create<arith::ExtFOp>(loc, floatType, gpuLoadVal);
+    //cpuLoadVal = convertFloatToBF16ToFloat(loopB, cpuLoadVal);
+    //gpuLoadVal = convertBF16ToFloat(loopB, gpuLoadVal);
+    //gpuPrintVal = gpuLoadVal;
   }
 
   mlir::Value percentDiffVal;
