@@ -222,7 +222,7 @@ async def sweepParameters(paramIter: Iterable[IterType],
     CONCURRENT_TESTS = 100
     failingConfigs = []
     passed = 0
-    inapplicable = 0
+    invalid = 0
     configs = (c for c in (toConfig(p) for p in paramIter))
     for configs in grouper((dropGoodConfig(c) for c in configs), CONCURRENT_TESTS):
         configsFuture = asyncio.gather(*configs)
