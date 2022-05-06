@@ -15,6 +15,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "llvm/IR/Argument.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 using namespace mlir;
 
 namespace mlir {
@@ -103,22 +105,29 @@ struct  BF16AsF32 : public ConvertOpToLLVMPattern<Op> {
         resType = resShaped.clone(i16);
     }
 
-    if (resElementType != bf16)
-      return failure();
+    //if (resElementType != bf16)
+    //  extType = resType;
 
     llvm::errs() << "convert it to: ";
     llvm::SmallVector<Value, 2> extended;
     for (Value v : adaptor.getOperands()) {
+    //  if ( v.getType() == i16)
       extended.push_back(rewriter.create<LLVM::FPExtOp>(loc, extType, v)); // i16->f32
+    //  else
+    //  extended.push_back(v); // i16->f32
+
     }
 
-    Op operation = rewriter.create<Op>(loc, extType, extended, op->getAttrs());
-    rewriter.replaceOpWithNewOp<LLVM::FPTruncOp>(op, this->getTypeConverter()->convertType(resType),
+    if (resElementType == bf16) {
+      Op operation = rewriter.create<Op>(loc, extType, extended, op->getAttrs());
+      rewriter.replaceOpWithNewOp<LLVM::FPTruncOp>(op, this->getTypeConverter()->convertType(resType),
                                                  operation.getResult());
+    }
+    else { // FCmp
+      Op operation = rewriter.create<Op>(loc, resType, extended, op->getAttrs());
+      rewriter.replaceOp(op.getOperation(), {operation});
+    }
 
-    llvm::errs() << "To ";
-    operation.dump();
-    llvm::errs()<<"\n";
     return success();
   }
 };
@@ -158,6 +167,7 @@ struct UnaryBF16AsF32 : OpRewritePattern<Op> {
   }
 };
 */
+/*
 struct  SoftwareBF16Cmp : public ConvertOpToLLVMPattern<FCmpOp> {
   using ConvertOpToLLVMPattern<FCmpOp>::ConvertOpToLLVMPattern;
 
@@ -199,6 +209,7 @@ struct  SoftwareBF16Cmp : public ConvertOpToLLVMPattern<FCmpOp> {
     return success();
   }
 };
+*/
 
 Value getLlvmI32Const(Location loc, PatternRewriter &rewriter, Type type,
                       int32_t value) {
@@ -312,7 +323,7 @@ llvm::errs()<<"Software FPTruncOp: ";
     return success();
   }
 };
-
+/*
 struct  SoftwareBF16Load : public ConvertOpToLLVMPattern<LLVM::LoadOp> {
   using ConvertOpToLLVMPattern<LoadOp>::ConvertOpToLLVMPattern;
 
@@ -328,7 +339,8 @@ struct  SoftwareBF16Load : public ConvertOpToLLVMPattern<LLVM::LoadOp> {
     if (retElemType != bf16)
       return failure();
     llvm::errs()<<"convert a BFload ";
-    Value loadOp = rewriter.create<LLVM::LoadOp>(loc, typeConverter->convertType(retType), adaptor.getAddr()); //, op.getAlignment(), op.getVolatile_(), op.getNontemporal());
+    Value loadOp = rewriter.create<LLVM::LoadOp>(loc, typeConverter->convertType(retType), adaptor.getOperands(), op->getAttrs());//adaptor.getAddr()); //, op.getAlignment(), op.getVolatile_(), op.getNontemporal());
+    //Value loadOp = rewriter.create<LLVM::LoadOp>(loc, typeConverter->convertType(retType), adaptor.getAddr()); //, op.getAlignment(), op.getVolatile_(), op.getNontemporal());
 
     loadOp.dump();
     llvm::errs()<<"\n";
@@ -336,17 +348,19 @@ struct  SoftwareBF16Load : public ConvertOpToLLVMPattern<LLVM::LoadOp> {
     return success();
   }
 };
-
+*/
 struct  SoftwareBF16Store : public ConvertOpToLLVMPattern<LLVM::StoreOp> {
   using ConvertOpToLLVMPattern<StoreOp>::ConvertOpToLLVMPattern;
 
   LogicalResult matchAndRewrite(LLVM::StoreOp op, LLVM::StoreOp::Adaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const override {
 
-    //uint64_t alignment = op.getAlignment().getValue();
-  rewriter.replaceOpWithNewOp<LLVM::StoreOp>(op, adaptor.getValue(),
-                                             adaptor.getAddr());//, alignment,
+    llvm::errs()<<"convert a BFStore \n";
+    rewriter.create<LLVM::StoreOp>(op.getLoc(), TypeRange(), adaptor.getOperands(),
+                                             op->getAttrs());//, alignment,
                                              //op.getVolatile_(), op.getNontemporal());
+   rewriter.eraseOp(op);
+   return success();
   }
 };
 
@@ -363,16 +377,18 @@ struct  SoftwareBF16Call : public ConvertOpToLLVMPattern<LLVM::CallOp> {
     auto fn = dyn_cast<LLVMFuncOp>(callee);
     mlir::NamedAttribute attr = rewriter.getNamedAttr(
             "callee", mlir::SymbolRefAttr::get(fn));
+
     if (op.getNumResults() == 0) {
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-          op, llvm::None, adaptor.getOperands(), llvm::ArrayRef<mlir::NamedAttribute>{attr});
+      rewriter.create<LLVM::CallOp>(
+          loc, llvm::None, adaptor.getOperands(), op->getAttrs());
+      rewriter.eraseOp(op);
       return success();
     }
 
     // Function returns a single result.
     auto dstType = typeConverter->convertType(op.getResult(0).getType());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, dstType, adaptor.getOperands(), llvm::ArrayRef<mlir::NamedAttribute>{attr});
+        op, dstType, adaptor.getOperands(), op->getAttrs());//llvm::ArrayRef<mlir::NamedAttribute>{attr});
     return success();
   }
 };
@@ -383,8 +399,29 @@ struct  SoftwareBF16Func : public ConvertOpToLLVMPattern<LLVM::LLVMFuncOp> {
   LogicalResult matchAndRewrite(LLVM::LLVMFuncOp op, LLVM::LLVMFuncOp::Adaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
+    Type funcType = op.getType();
    llvm::errs()<<"converting FuncOp\n"; 
+   SmallVector<Value> params;
+   
+   //params.reserve(op.getNumParams());
+
+   Type f32 = rewriter.getF32Type();
+   BlockAndValueMapping mapper;
+   for (auto arg : op.getOperation()->getOperands())
+   {
+     arg.dump();
+     //arg.setType(f32);
+     //arg.dump();
+     //llvm::Argument newarg(typeConverter->convertType(arg.getType()));
+     //mapper.map(arg, newarg);
+   }
+   for (auto res : op.getOperation()->getResults())
+   {
+    res.dump();
+     //mapper.map(res, (typeConverter->convertType(res.getType())));
+   }
     rewriter.create<LLVM::LLVMFuncOp>(loc, op.getName(), typeConverter->convertType(op.getType()));
+    //auto clonedFuncOp = rewriter.clone(op, mapper);
     rewriter.eraseOp(op);
     return success();
   }
@@ -402,34 +439,11 @@ struct ConvertBF16ToI16 : public ConvertOpToLLVMPattern<LLVMOp> {
     for ( auto v: adaptor.getOperands() )
       v.dump();
     //assert(!adaptor.getOperands().empty());
+    //BlockAndValueMapping mapping
+    //auto newOp = rewriter.clone(op, mapping);
     return LLVM::detail::oneToOneRewrite(op, LLVMOp::getOperationName(),
                                          adaptor.getOperands(),
                                          *this->getTypeConverter(), rewriter);
-  }
-};
-
-struct ConvertBF16Load : ConvertOpToLLVMPattern<LLVM::LoadOp> {
-  using ConvertOpToLLVMPattern<LLVM::LoadOp>::ConvertOpToLLVMPattern;
-
-  LogicalResult
-  matchAndRewrite(LLVM::LoadOp op, LLVM::LoadOp::Adaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    auto loc = op.getLoc();
-    Type retType = op.getResult().getType();
-    Type retElemType = retType;
-    if (auto retTypeShaped = retType.dyn_cast<ShapedType>())
-      retElemType = retTypeShaped.getElementType();
-    if (retElemType != rewriter.getBF16Type())
-      return failure();
-    llvm::errs()<<"convert a BFload to ";
-    op.getAddr().dump();
-    llvm::errs()<<"\n";
-    Value loadOp = rewriter.create<LLVM::LoadOp>(loc, typeConverter->convertType(retType), op.getAddr());
-    llvm::errs()<<"convert a BFload to ";
-    loadOp.dump();
-    llvm::errs()<<"\n";
-    rewriter.replaceOp(op.getOperation(), {loadOp});
-    return success();
   }
 };
 
@@ -503,16 +517,18 @@ void mlir::LLVM::populateBF16(LLVMTypeConverter &converter,
                LLVM::BF16AsF32<LLVM::FMulOp>,
                LLVM::BF16AsF32<LLVM::FMAOp>,
                LLVM::BF16AsF32<LLVM::FSubOp>, 
-               LLVM::BF16AsF32<LLVM::FDivOp>>(converter);
+               LLVM::BF16AsF32<LLVM::FDivOp>,
+               LLVM::BF16AsF32<LLVM::FCmpOp>>(converter);
 
-  patterns.add<LLVM::SoftwareBF16Cmp>(converter);
+  //patterns.add<LLVM::SoftwareBF16Cmp>(converter);
   //patterns.add<LLVM::SoftwareBF16Cmp, LLVM::UnaryBF16AsF32<LLVM::FAbsOp>>(converter);
-  patterns.add<LLVM::SoftwareBF16Load, LLVM::SoftwareBF16Store>(converter);
+  patterns.add<LLVM::SoftwareBF16Store>(converter);
   patterns.add<LLVM::ConvertBF16ToI16<LLVM::GEPOp>, LLVM::ConvertBF16ToI16<LLVM::AllocaOp>,
                LLVM::ConvertBF16ToI16<LLVM::PtrToIntOp>, LLVM::ConvertBF16ToI16<LLVM::BitcastOp>, LLVM::ConvertBF16ToI16<LLVM::NullOp>,
-                LLVM::ConvertBF16ToI16<LLVM::UndefOp>>(converter);
-  patterns.add<LLVM::SoftwareBF16Call, LLVM::SoftwareBF16Func>(converter);
-  patterns.add<LLVM::ConvertBF16ToI16<LLVM::InsertValueOp>, LLVM::ConvertBF16ToI16<LLVM::ExtractValueOp>>(converter); 
+                LLVM::ConvertBF16ToI16<LLVM::UndefOp>, LLVM::ConvertBF16ToI16<LLVM::LoadOp>>(converter);
+  patterns.add<LLVM::SoftwareBF16Func>(converter);
+  patterns.add<LLVM::SoftwareBF16Call>(converter);
+  patterns.add<LLVM::ConvertBF16ToI16<LLVM::InsertValueOp>, LLVM::ConvertBF16ToI16<LLVM::ExtractValueOp>, LLVM::ConvertBF16ToI16<LLVM::ReturnOp>>(converter); 
 }
 
 namespace {
@@ -557,7 +573,7 @@ struct SoftwareBF16Pass : public SoftwareBF16Base<SoftwareBF16Pass> {
                                  LLVM::FMulOp, LLVM::FMAOp,
                                  LLVM::FAbsOp, LLVM::FCmpOp,
                                  LLVM::ConstantOp, LLVM::LoadOp, LLVM::StoreOp, LLVM::GEPOp, LLVM::AllocaOp,
-                                 LLVM::PtrToIntOp, LLVM::BitcastOp, LLVM::InsertValueOp, LLVM::ExtractValueOp, LLVM::NullOp, LLVM::CallOp>(isLegalOperation);
+                                 LLVM::PtrToIntOp, LLVM::BitcastOp, LLVM::InsertValueOp, LLVM::ExtractValueOp, LLVM::NullOp, LLVM::CallOp, LLVM::ReturnOp>(isLegalOperation);
 
     target.addDynamicallyLegalOp<LLVM::LLVMFuncOp>(isLegalFuncOp);
     target.addDynamicallyLegalOp<LLVM::FPExtOp, LLVM::FPTruncOp>(isLegalFPExtOpOrFPTruncOp);
