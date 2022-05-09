@@ -378,11 +378,11 @@ def main() -> bool:
     if config == 'perf_config':
         config = ('xdlops_' if XDLOPS else 'non_xdlops_') + config
     succeeded = False
-    if args.config == 'conv_structure':
+    if config == 'conv_structure':
         succeeded = asyncio.run(runConfig(CONV_STRUCTURE, to_conv_structure_type_test))
-    elif args.config == 'xdlops_perf_config':
+    elif config == 'xdlops_perf_config':
         succeeded = asyncio.run(runConfig(XDLOPS_PERF_CONFIG, to_xdlops_perf_config_test))
-    elif args.config == 'non_xdlops_perf_config':
+    elif config == 'non_xdlops_perf_config':
         succeeded = asyncio.run(runConfig(NON_XDLOPS_PERF_CONFIG,
             to_non_xdlops_perf_config_test))
     else:
