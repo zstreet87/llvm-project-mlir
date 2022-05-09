@@ -62,7 +62,7 @@ class MLIROnlyConfig(ConvConfiguration):
         if self.xdlops:
             result.append('-x2')
         if self.perfConfig is not None:
-            result.append('--perf-config')
+            result.append('--perf_config')
             result.append(','.join(str(v) for v in self.perfConfig))
 
         return result
@@ -376,7 +376,7 @@ def main() -> bool:
 
     config = args.config
     if config == 'perf_config':
-        config = ('xdlops_' if XDLOPS else 'non_xdlops') + config
+        config = ('xdlops_' if XDLOPS else 'non_xdlops_') + config
     succeeded = False
     if args.config == 'conv_structure':
         succeeded = asyncio.run(runConfig(CONV_STRUCTURE, to_conv_structure_type_test))
@@ -385,6 +385,8 @@ def main() -> bool:
     elif args.config == 'non_xdlops_perf_config':
         succeeded = asyncio.run(runConfig(NON_XDLOPS_PERF_CONFIG,
             to_non_xdlops_perf_config_test))
+    else:
+        print(f"Unknown config: {config}", file=sys.stderr)
     return succeeded
 
 if __name__ == '__main__':
