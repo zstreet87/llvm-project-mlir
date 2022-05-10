@@ -24,7 +24,7 @@ void buildMIOpen(String cmakeOpts) {
 }
 
 void getAndBuildMIOpen(String prefixOpt, String cmakeOpts) {
-    git branch: 'develop', poll: false,\
+    git branch: 'add-mlir-int8', poll: false,\
         url: 'https://github.com/ROCmSoftwarePlatform/MIOpen.git'
     cmake arguments: "-P install_deps.cmake --minimum ${prefixOpt}",\
         installation: "InSearchPath"
@@ -38,7 +38,7 @@ void buildMIOpenWithMLIR() {
         installation: 'InSearchPath', workingDir: 'build'
 
     dir('MIOpen') {
-        git branch: 'develop', poll: false,\
+        git branch: 'add-mlir-int8', poll: false,\
             url: 'https://github.com/ROCmSoftwarePlatform/MIOpen.git'
         sh 'sed -i "/ROCmSoftwarePlatform\\/llvm-project-mlir/d" ./requirements.txt'
         cmake arguments: "-P install_deps.cmake --minimum --prefix ${WORKSPACE}/MIOpenDeps",\
@@ -314,11 +314,19 @@ pipeline {
                             steps {
                                 timeout(time: 60, activity: true, unit: 'MINUTES') {
                                     dir('MIOpen/build/') {
+                                        // no-tuning test configs
                                         sh """
                                         bash ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/miopen_validate.sh --test-all --no-tuning\
                                            < ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/selected-resnet50-miopen-configs"""
                                         sh """
+                                        bash ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/miopen_validate.sh --test-fwd --dtype int8 --no-tuning\
+                                           < ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/selected-resnet50-miopen-configs"""
+                                        // tuning test configs
+                                        sh """
                                         bash ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/miopen_validate.sh --test-all --tuning\
+                                           < ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/selected-resnet50-miopen-configs"""
+                                        sh """
+                                        bash ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/miopen_validate.sh --test-fwd --dtype int8 --tuning\
                                            < ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/selected-resnet50-miopen-configs"""
                                     }
                                 }
@@ -408,6 +416,9 @@ pipeline {
                             dir('MIOpen/build/') {
                                 sh """
                                 bash ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/miopen_validate.sh --test-all --tuning\
+                                    < ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/resnet50-miopen-configs"""
+                                sh """
+                                bash ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/miopen_validate.sh --test-fwd --dtype int8 --tuning\
                                     < ${WORKSPACE}/mlir/utils/jenkins/miopen-tests/resnet50-miopen-configs"""
                                 sh 'ls -l MIOpenUserDB'
                             }
